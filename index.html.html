@@ -1,0 +1,839 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Boe's HABIT Quest — Game On!</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+
+  <!-- React + Babel + Tailwind CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root{
+      --grid-color: rgba(255,255,255,.08);
+      --grid-highlight: rgba(0,255,234,.25);
+      --neon: 0 0 20px rgba(0,255,234,.5), 0 0 40px rgba(0,255,234,.25);
+    }
+    html,body{height:100%}
+    body{
+      margin:0; padding:0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color:#fff;
+      background: radial-gradient(1200px 600px at 20% -10%, rgba(0,255,234,.18), transparent 40%),
+                  radial-gradient(1200px 600px at 120% 110%, rgba(140,0,255,.18), transparent 40%),
+                  linear-gradient(135deg, #0b1020 0%, #0a0f1a 40%, #0a0e18 100%);
+      overflow-x:hidden;
+    }
+    .grid-bg::before, .grid-bg::after{
+      content:""; position:fixed; inset:0; z-index:-1;
+      background:
+        linear-gradient(to right, var(--grid-color) 1px, transparent 1px) 0 0/60px 60px,
+        linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px) 0 0/60px 60px;
+      mask-image: radial-gradient(circle at 50% 50%, black 60%, transparent 100%);
+      opacity:.6; animation: pan 30s linear infinite;
+    }
+    .grid-bg::after{
+      background:
+        linear-gradient(to right, var(--grid-highlight) 1px, transparent 1px) 0 0/240px 240px,
+        linear-gradient(to bottom, var(--grid-highlight) 1px, transparent 1px) 0 0/240px 240px;
+      opacity:.35; animation: pan 50s linear infinite reverse;
+    }
+    @keyframes pan{0%{transform:translateY(0)}50%{transform:translateY(-40px) rotate(.2deg)}100%{transform:translateY(0)}}
+    .focus-ring:focus{ outline:2px solid #22d3ee; outline-offset:2px }
+    .game-title{ font-family: Rajdhani, system-ui, sans-serif; letter-spacing:.02em; text-shadow: var(--neon); }
+    .glass{ background: rgba(255,255,255,.06); backdrop-filter: blur(12px); border:1px solid rgba(255,255,255,.15); box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+    .neon-border{ position: relative; border:1px solid rgba(34,211,238,.35); }
+    .neon-border::after{ content:""; position:absolute; inset:-1px; border:1px solid rgba(34,211,238,.2); filter:blur(4px); border-radius:inherit; pointer-events:none; }
+    .lvl-badge{ background: linear-gradient(135deg,#00ffe0 0%,#7c3aed 100%); -webkit-background-clip:text; background-clip:text; color:transparent; text-shadow: var(--neon); }
+    @keyframes spin-slow { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+    .animate-spin-slow{ animation: spin-slow 3s linear infinite }
+    .chip{ transition: transform .1s ease } .chip:active{ transform: scale(.98) }
+  </style>
+
+  <!-- PWA: dynamic manifest + inline service worker -->
+  <script>
+    (function setupPWA(){
+      if (!('serviceWorker' in navigator)) return;
+      function makePng(size, bg='#0b1020', fg='#00ffe0'){
+        const c=document.createElement('canvas'); c.width=c.height=size;
+        const x=c.getContext('2d'); x.fillStyle=bg; x.fillRect(0,0,size,size);
+        x.fillStyle=fg; x.beginPath();
+        x.moveTo(size*0.55, size*0.15); x.lineTo(size*0.15, size*0.65);
+        x.lineTo(size*0.48, size*0.65); x.lineTo(size*0.42, size*0.9);
+        x.lineTo(size*0.85, size*0.35); x.lineTo(size*0.52, size*0.35); x.closePath(); x.fill();
+        return c.toDataURL('image/png');
+      }
+      const manifest = {
+        name:"Boe's Chore Quest", short_name:"ChoreQuest", start_url:".", scope:".",
+        display:"standalone", background_color:"#0b1020", theme_color:"#00ffe0",
+        icons:[{src:makePng(192),sizes:"192x192",type:"image/png"},{src:makePng(512),sizes:"512x512",type:"image/png"}]
+      };
+      const manifestURL = URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:"application/json"}));
+      const link=document.createElement('link'); link.rel='manifest'; link.href=manifestURL; document.head.appendChild(link);
+
+      const swCode = `
+        const CACHE='cq-v3'; /* bumped so new build is fetched */
+        self.addEventListener('install',e=>{e.waitUntil((async()=>{const c=await caches.open(CACHE);try{await c.addAll(['./','./index.html']);}catch(e){} self.skipWaiting();})())});
+        self.addEventListener('activate',e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)));await self.clients.claim();})())});
+        self.addEventListener('fetch',e=>{e.respondWith((async()=>{try{const r=await fetch(e.request); if(e.request.method==='GET' && r && r.status===200 && r.type!=='opaque'){(await caches.open(CACHE)).put(e.request,r.clone());} return r;}catch(err){const c=await caches.match(e.request); if(c) return c; return caches.match('./');}})())});
+      `;
+      const swUrl = URL.createObjectURL(new Blob([swCode],{type:'text/javascript'}));
+      navigator.serviceWorker.register(swUrl).catch(()=>{});
+    })();
+  </script>
+</head>
+
+<body class="grid-bg">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    /* ========== utils ========== */
+    const safeParse = (raw, fallback) => { try { return raw==null?fallback:JSON.parse(raw);} catch{ return fallback; } };
+    const safeInt = (raw, fallback=0) => { const n=parseInt(raw,10); return Number.isFinite(n)?n:fallback; };
+    const clamp0 = n => Math.max(0,n);
+    const todayKey = () => new Date().toLocaleDateString('en-CA');
+    const mondayKey = () => {
+      const d = new Date(); const day=d.getDay(); const diff=(day===0?-6:1)-day;
+      const m = new Date(d.getFullYear(), d.getMonth(), d.getDate()+diff);
+      return m.toLocaleDateString('en-CA');
+    };
+
+    const getWeekDays = () => {
+      const today = new Date();
+      const day = today.getDay();
+      const diff = (day === 0 ? -6 : 1) - day; // Monday
+      const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + diff);
+
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        days.push({
+          date: d.toLocaleDateString('en-CA'),
+          day: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i],
+          dayNum: d.getDate()
+        });
+      }
+      return days;
+    };
+
+    /* ========== icons (accept children) ========== */
+    const Icon = ({path, lines=[], circ=[], poly=[], className, viewBox="0 0 24 24", children}) => (
+      <svg className={className} width="24" height="24" viewBox={viewBox} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {path && <path d={path} />}{lines.map((l,i)=><line key={i} {...l}/>)}
+        {circ.map((c,i)=><circle key={i} {...c}/>)}
+        {poly.map((p,i)=><polygon key={i} {...p}/>)}
+        {children}
+      </svg>
+    );
+    const Zap = (p)=> <Icon {...p} poly={[{points:"13 2 3 14 12 14 11 22 21 10 12 10 13 2"}]}/>;
+    const Star = (p)=> <Icon {...p} poly={[{points:"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"}]}/>;
+    const Trophy = (p)=> <Icon {...p} path="M6 9H4.5a2.5 2.5 0 0 1 0-5H6 M18 9h1.5a2.5 2.5 0 0 0 0-5H18 M4 22h16 M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22 M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22 M18 2H6v7a6 6 0 0 0 12 0V2Z"/>; 
+    const Gift = (p)=> <Icon {...p} lines={[{x1:12,y1:22,x2:12,y2:7}]} path="M20 12V22H4V12 M2 7h20v5 M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>; 
+    const TargetI = (p)=> <Icon {...p} circ={[{cx:12,cy:12,r:10},{cx:12,cy:12,r:6},{cx:12,cy:12,r:2}]}/>; 
+    const Flame = (p)=> <Icon {...p} path="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>; 
+    const Crown = (p)=> <Icon {...p} path="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z" lines={[{x1:3,y1:20,x2:21,y2:20}]}/>; 
+    const Calendar = (p)=> <Icon {...p} path="M16 2v4M8 2v4M3 10h18" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/></Icon>;
+
+    /* ========== defaults (your edited copy) ========== */
+    const DEFAULT_DAILY = [
+      { id:1,  name:'⭐ Make Bed', points:10, completed:false, mandatory:true },
+      { id:19, name:'⭐ Brush Teeth (Morning)', points:10, completed:false, mandatory:true },
+      { id:25, name:'⭐ Take Vitamins', points:10, completed:false, mandatory:true },
+      { id:20, name:'⭐ Brush Teeth (Evening)', points:10, completed:false, mandatory:true },
+      { id:7,  name:'⭐ 25 Push Ups', points:25, completed:false, mandatory:true },
+
+      { id:8,  name:'20 Minutes Treadmill', points:25, completed:false, mandatory:false },
+      { id:37, name:'20 Minutes Outdoor Activity', points:30, completed:false, mandatory:false },
+      { id:38, name:'Drink 4+ Glasses of Water', points:20, completed:false, mandatory:false },
+      { id:36, name:'Try a Healthy New Food', points:20, completed:false, mandatory:false },
+      { id:24, name:'No Food After 7:00 PM', points:50, completed:false, mandatory:false },
+
+      { id:3,  name:'Do Homework', points:30, completed:false, mandatory:false },
+      { id:26, name:'Study 30 Minutes', points:25, completed:false, mandatory:false },
+      { id:27, name:'Review Notes After Class', points:15, completed:false, mandatory:false },
+      { id:28, name:'Complete Homework Without Reminder', points:30, completed:false, mandatory:false },
+      { id:29, name:'Read for Pleasure 20 Minutes', points:20, completed:false, mandatory:false },
+
+      { id:2,  name:'Clean Your Room', points:20, completed:false, mandatory:false },
+      { id:4,  name:'Take Out Trash', points:15, completed:false, mandatory:false },
+      /* removed: Feed Dogs (id:5) */
+      /* removed: Walk Dogs (id:46) */
+      { id:6,  name:'Dishes To Sink', points:20, completed:false, mandatory:false },
+
+      /* renamed */
+      { id:39, name:'Journal', points:15, completed:false, mandatory:false },
+
+      { id:45, name:'Play Drums for 20 Minutes', points:20, completed:false, mandatory:false },
+
+      /* phone group (edited points for 8:00 PM) */
+      { id:21, name:'Turn In Phone at 9:00 PM',  points:20, completed:false, mandatory:false, group:'phone' },
+      { id:22, name:'Turn In Phone at 8:30 PM', points:30, completed:false, mandatory:false, group:'phone' },
+      { id:23, name:'Turn In Phone at 8:00 PM', points:50, completed:false, mandatory:false, group:'phone' },
+
+      /* new additions */
+      { id:48, name:'Lifted Weights',      points:30, completed:false, mandatory:false },
+      { id:49, name:'10 Minutes of Plank', points:30, completed:false, mandatory:false },
+    ];
+
+    const DEFAULT_WEEKLY = [
+      { id:9,  name:'Vacuum Room', points:50, completed:false },
+      { id:10, name:'Mow Lawn', points:75, completed:false },
+      { id:11, name:'Clean Bathroom', points:60, completed:false },
+      { id:12, name:'Organize Closet', points:40, completed:false },
+      { id:13, name:'Wash Car', points:80, completed:false },
+      { id:14, name:'Put Clothes Away', points:10, completed:false },
+      { id:15, name:'Wash Clothes', points:20, completed:false },
+      { id:16, name:'Dry Clothes', points:10, completed:false },
+      { id:17, name:'Take Trash to Curb', points:10, completed:false },
+      { id:18, name:'Retrieve Trash Cans', points:10, completed:false },
+      { id:30, name:'Turn In All Assignments This Week', points:50, completed:false },
+      { id:31, name:'Strategized 3D Printing Business', points:35, completed:false },
+      { id:33, name:'Improved Grade from Last Time', points:60, completed:false },
+      { id:34, name:'Complete Extra Credit', points:40, completed:false },
+      { id:35, name:'Crunch Time', points:35, completed:false },
+      { id:41, name:'Help Prepare a Healthy Meal', points:30, completed:false },
+      { id:43, name:'Practice Deep Breathing/Meditation', points:25, completed:false },
+      { id:44, name:'Called or Texted Grandparents', points:20, completed:false },
+      { id:47, name:'Set Weekly Goal for Streak', points:30, completed:false },
+    ];
+
+    /* ======= audio (applause on task complete stays) ======= */
+    function useGameAudio(){
+      const audioCtxRef = useRef(null);
+      const padNodesRef = useRef([]);
+      const unlockedRef = useRef(false);
+      const fileAudioRef = useRef(null);
+      const applauseRef = useRef(null);
+
+      const [usingFile, setUsingFile] = useState(false);
+      const [musicEnabled, setMusicEnabled] = useState(localStorage.getItem('cqMusicEnabled') !== 'false');
+
+      const stopFile = () => { try { fileAudioRef.current?.pause(); } catch {} };
+      const makeAudioEl = (url) => { const el=new Audio(url); el.preload='metadata'; el.loop=true; el.volume=0.35; return el; };
+
+      useEffect(() => {
+        const applauseURL = localStorage.getItem('cqApplauseURL') || './audio/crowd-applause.mp3';
+        const applause = new Audio(applauseURL);
+        applause.preload = 'auto';
+        applause.volume = 0.5;
+        applauseRef.current = applause;
+      }, []);
+
+      const setExternalMP3 = (url) => {
+        if (!url) return;
+        stopFile();
+        const el = makeAudioEl(url);
+        const onMeta = () => {
+          setUsingFile(true);
+          fileAudioRef.current = el;
+          localStorage.setItem('cqMusicURL', url);
+          if (unlockedRef.current && musicEnabled){ el.currentTime=0; el.play().catch(()=>{}); }
+          el.removeEventListener('loadedmetadata', onMeta);
+          el.removeEventListener('error', onErr);
+        };
+        const onErr = () => {
+          setUsingFile(false);
+          fileAudioRef.current = null;
+          el.removeEventListener('loadedmetadata', onMeta);
+          el.removeEventListener('error', onErr);
+          alert('Could not load that audio URL (CORS/format). Try uploading the MP3 or host it on the same domain.');
+        };
+        el.addEventListener('loadedmetadata', onMeta);
+        el.addEventListener('error', onErr);
+      };
+
+      const clearExternalMP3 = () => {
+        stopFile();
+        fileAudioRef.current = null;
+        setUsingFile(false);
+        localStorage.removeItem('cqMusicURL');
+      };
+
+      useEffect(() => {
+        const url = new URLSearchParams(location.search).get('music') || localStorage.getItem('cqMusicURL');
+        if (url) setExternalMP3(url);
+      }, []);
+
+      useEffect(() => {
+        const unlock = () => {
+          if (unlockedRef.current) return;
+          unlockedRef.current = true;
+          if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+          if (musicEnabled) startMusic();
+          document.removeEventListener('pointerdown', unlock);
+          document.removeEventListener('keydown', unlock);
+        };
+        document.addEventListener('pointerdown', unlock);
+        document.addEventListener('keydown', unlock);
+        return () => {
+          document.removeEventListener('pointerdown', unlock);
+          document.removeEventListener('keydown', unlock);
+        };
+      }, [musicEnabled]);
+
+      const startMusic = () => {
+        if (usingFile && fileAudioRef.current){
+          fileAudioRef.current.currentTime = 0;
+          fileAudioRef.current.play().catch(()=>{});
+          return;
+        }
+      };
+      const stopMusic = () => {
+        stopFile();
+        if (!audioCtxRef.current) return;
+        padNodesRef.current.forEach(v=>{ try{ v.o1?.stop(); v.o2?.stop(); v.o3?.stop(); v.lfo?.stop(); v.o1?.disconnect(); v.o2?.disconnect(); v.o3?.disconnect(); v.lfo?.disconnect(); v.lg?.disconnect(); v.lp?.disconnect(); v.g?.disconnect(); }catch{} });
+        padNodesRef.current = [];
+      };
+
+      const toggleMusic = () => {
+        const next = !musicEnabled;
+        setMusicEnabled(next);
+        localStorage.setItem('cqMusicEnabled', String(next));
+        if (!unlockedRef.current) return;
+        if (next) startMusic(); else stopMusic();
+      };
+
+      const sfxApplause = () => {
+        if (!unlockedRef.current) return;
+        if (applauseRef.current) {
+          const audio = applauseRef.current;
+          audio.currentTime = 0;
+          audio.volume = 0.5;
+          audio.play().catch(()=>{});
+          setTimeout(() => {
+            const fadeOutDuration = 500;
+            const fadeOutSteps = 20;
+            const fadeOutInterval = fadeOutDuration / fadeOutSteps;
+            const volumeStep = audio.volume / fadeOutSteps;
+            let currentStep = 0;
+            const fadeInterval = setInterval(() => {
+              currentStep++;
+              audio.volume = Math.max(0, audio.volume - volumeStep);
+              if (currentStep >= fadeOutSteps) {
+                clearInterval(fadeInterval);
+                audio.pause();
+                audio.volume = 0.5;
+              }
+            }, fadeOutInterval);
+          }, 3000);
+        }
+      };
+
+      const sfxLevel = () => {
+        if (!unlockedRef.current) return;
+        if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||window.webkitAudioContext)();
+        const ctx=audioCtxRef.current;
+        const playBeep = (freq, dur, vol, delay=0) => {
+          const o=ctx.createOscillator(), g=ctx.createGain();
+          o.type='square'; o.frequency.value=freq; g.gain.value=vol;
+          o.connect(g).connect(ctx.destination);
+          o.start(ctx.currentTime + delay);
+          o.stop(ctx.currentTime + delay + dur);
+        };
+        playBeep(523,.08,.06,0);
+        playBeep(784,.1,.06,0.09);
+        playBeep(1046,.12,.06,0.18);
+      };
+
+      useEffect(()=>{ if (!unlockedRef.current) return; if (musicEnabled) startMusic(); else stopMusic(); return ()=>stopMusic(); },[musicEnabled, usingFile]);
+
+      return { musicEnabled, toggleMusic, sfxApplause, sfxLevel, usingFile, setExternalMP3, clearExternalMP3, fileAudioRef };
+    }
+
+    /* ========== PWA install hook ========== */
+    function usePWAInstall(){
+      const [p, setP] = useState(null);
+      const [can, setCan] = useState(false);
+      useEffect(()=>{
+        const onBIP = (e)=>{ e.preventDefault(); setP(e); setCan(true); };
+        window.addEventListener('beforeinstallprompt', onBIP);
+        window.addEventListener('appinstalled', ()=>{ setCan(false); setP(null); });
+        return ()=>window.removeEventListener('beforeinstallprompt', onBIP);
+      },[]);
+      const promptInstall = async ()=>{ if(!p) return false; p.prompt(); const {outcome}=await p.userChoice; setP(null); setCan(false); return outcome==='accepted'; };
+      const isSecure = window.isSecureContext || location.hostname==='localhost';
+      return { canInstall: can && isSecure, promptInstall, isSecure };
+    }
+
+    /* ========== App ========== */
+    function App(){
+      const [points, setPoints] = useState(()=>safeInt(localStorage.getItem('choreQuestPoints'),0));
+      const [level, setLevel] = useState(()=>safeInt(localStorage.getItem('choreQuestLevel'),1));
+      const [streak, setStreak] = useState(()=>safeInt(localStorage.getItem('choreQuestStreak'),0));
+      const [dailyStreak, setDailyStreak] = useState(()=>safeInt(localStorage.getItem('choreQuestDailyStreak'),0));
+      const [weeklyGoal, setWeeklyGoal] = useState(()=>localStorage.getItem('choreQuestWeeklyGoal') || 'Complete all daily tasks for 7 days straight!');
+      const [weeklyStreakBonusAwarded, setWeeklyStreakBonusAwarded] = useState(()=>localStorage.getItem('choreQuestWeeklyBonusAwarded')==='true');
+      const [dailyCelebrated, setDailyCelebrated] = useState(()=>localStorage.getItem('choreQuestDailyCelebrated')==='true');
+      const [weeklyCompleted, setWeeklyCompleted] = useState(()=>localStorage.getItem('choreQuestWeeklyCelebrated')==='true');
+      const [dailyTasks, setDailyTasks] = useState(()=>safeParse(localStorage.getItem('choreQuestDailyTasks'), DEFAULT_DAILY));
+      const [weeklyTasks, setWeeklyTasks] = useState(()=>safeParse(localStorage.getItem('choreQuestWeeklyTasks'), DEFAULT_WEEKLY));
+      const [lastDailyKey, setLastDailyKey] = useState(()=>localStorage.getItem('choreQuestLastDaily') || todayKey());
+      const [lastMondayKey, setLastMondayKey] = useState(()=>localStorage.getItem('choreQuestLastMonday') || mondayKey());
+      const [weekProgress, setWeekProgress] = useState(()=>safeParse(localStorage.getItem('choreQuestWeekProgress'), {}));
+
+      const [showLevelUp, setShowLevelUp] = useState(false);
+      const [showCelebration, setShowCelebration] = useState(false);
+      const [celebrationType, setCelebrationType] = useState('');
+      const [showTools, setShowTools] = useState(false);
+
+      const { musicEnabled, toggleMusic, sfxApplause, sfxLevel } = useGameAudio();
+      const { canInstall, promptInstall, isSecure } = usePWAInstall();
+
+      const pointsForNextLevel = level * 200;
+      const progress = (points / pointsForNextLevel) * 100;
+      const monthlyGoal = 3500;
+      const monthlyProgress = (points / monthlyGoal) * 100;
+      const levelsArr = [
+        { level:1, title:'Beginner', icon:'🌱' },
+        { level:2, title:'Helper', icon:'⭐' },
+        { level:3, title:'Task Master', icon:'💪' },
+        { level:4, title:'Chore Champion', icon:'🏆' },
+        { level:5, title:'Legendary Hero', icon:'👑' },
+      ];
+      const currentLevelInfo = levelsArr.find(l=>l.level===Math.min(level,5))||levelsArr[0];
+
+      const dailyDoneCount  = useMemo(()=>dailyTasks.filter(t=>t.completed).length,[dailyTasks]);
+      const weeklyDoneCount = useMemo(()=>weeklyTasks.filter(t=>t.completed).length,[weeklyTasks]);
+      const dailyTotal = dailyTasks.length;
+      const weeklyTotal = weeklyTasks.length;
+
+      const weekDays = useMemo(() => getWeekDays(), [lastMondayKey]);
+
+      useEffect(()=>{ localStorage.setItem('choreQuestPoints', String(points)); },[points]);
+      useEffect(()=>{ localStorage.setItem('choreQuestLevel', String(level)); },[level]);
+      useEffect(()=>{ localStorage.setItem('choreQuestStreak', String(streak)); },[streak]);
+      useEffect(()=>{ localStorage.setItem('choreQuestDailyStreak', String(dailyStreak)); },[dailyStreak]);
+      useEffect(()=>{ localStorage.setItem('choreQuestWeeklyBonusAwarded', String(weeklyStreakBonusAwarded)); },[weeklyStreakBonusAwarded]);
+      useEffect(()=>{ localStorage.setItem('choreQuestDailyCelebrated', String(dailyCelebrated)); },[dailyCelebrated]);
+      useEffect(()=>{ localStorage.setItem('choreQuestWeeklyCelebrated', String(weeklyCompleted)); },[weeklyCompleted]);
+      useEffect(()=>{ localStorage.setItem('choreQuestDailyTasks', JSON.stringify(dailyTasks)); },[dailyTasks]);
+      useEffect(()=>{ localStorage.setItem('choreQuestWeeklyTasks', JSON.stringify(weeklyTasks)); },[weeklyTasks]);
+      useEffect(()=>{ localStorage.setItem('choreQuestWeeklyGoal', weeklyGoal); },[weeklyGoal]);
+      useEffect(()=>{ localStorage.setItem('choreQuestLastDaily', lastDailyKey); },[lastDailyKey]);
+      useEffect(()=>{ localStorage.setItem('choreQuestLastMonday', lastMondayKey); },[lastMondayKey]);
+      useEffect(()=>{ localStorage.setItem('choreQuestWeekProgress', JSON.stringify(weekProgress)); },[weekProgress]);
+
+      useEffect(()=>{
+        const newLevel = Math.floor(points/200)+1;
+        if (newLevel>level){ setLevel(newLevel); setShowLevelUp(true); sfxLevel(); setTimeout(()=>setShowLevelUp(false),2600); }
+      },[points]);
+
+      useEffect(()=>{
+        const checkDaily=()=>{ 
+          const tk=todayKey(); 
+          if (tk!==lastDailyKey){ 
+            setDailyTasks(prev=>prev.map(t=>({...t,completed:false}))); 
+            setDailyCelebrated(false); 
+            setLastDailyKey(tk); 
+          } 
+        };
+        checkDaily(); const id=setInterval(checkDaily,60*1000); return ()=>clearInterval(id);
+      },[lastDailyKey]);
+
+      useEffect(()=>{
+        const checkWeekly=()=>{ 
+          const mk=mondayKey(); 
+          if (mk!==lastMondayKey){ 
+            setWeeklyTasks(prev=>prev.map(t=>({...t,completed:false}))); 
+            setWeeklyStreakBonusAwarded(false);
+            setWeeklyCompleted(false);
+            setLastMondayKey(mk); 
+          } 
+        };
+        checkWeekly(); const id=setInterval(checkWeekly,60*60*1000); return ()=>clearInterval(id);
+      },[lastMondayKey]);
+
+      useEffect(()=>{
+        const allDailyComplete = dailyTasks.every(t=>t.completed);
+        const hasAnyTasks = dailyTasks.length > 0;
+        if (allDailyComplete && hasAnyTasks && !dailyCelebrated){
+          const today = todayKey();
+          const newStreak = dailyStreak+1; 
+          setDailyStreak(newStreak); 
+          setDailyCelebrated(true);
+          setWeekProgress(prev => ({...prev, [today]: 'completed'}));
+          setCelebrationType('daily'); 
+          setShowCelebration(true); 
+          sfxApplause();
+          setTimeout(()=>setShowCelebration(false),2400);
+          if (newStreak>=7 && !weeklyStreakBonusAwarded){
+            setTimeout(()=>{ 
+              setPoints(p=>p+100); 
+              setWeeklyStreakBonusAwarded(true); 
+              setCelebrationType('weeklyBonus'); 
+              setShowCelebration(true); 
+              setTimeout(()=>setShowCelebration(false),3000); 
+            },2600);
+          }
+        }
+      },[dailyTasks, dailyCelebrated, dailyStreak, weeklyStreakBonusAwarded]);
+
+      useEffect(()=>{
+        const allWeeklyComplete = weeklyTasks.every(t=>t.completed);
+        const hasAnyTasks = weeklyTasks.length > 0;
+        if (allWeeklyComplete && hasAnyTasks && !weeklyCompleted){ 
+          setWeeklyCompleted(true);
+          setCelebrationType('weekly'); 
+          setShowCelebration(true); 
+          sfxApplause();
+          setTimeout(()=>setShowCelebration(false),2400); 
+        }
+      },[weeklyTasks, weeklyCompleted]);
+
+      /* ---------- MIGRATION: ensure Push Ups (id:7) is mandatory even with old saved data ---------- */
+      useEffect(() => {
+        setDailyTasks(prev => {
+          let changed = false;
+          const next = prev.map(t =>
+            t.id === 7 && !t.mandatory ? (changed = true, { ...t, mandatory: true }) : t
+          );
+          if (changed) localStorage.setItem('choreQuestDailyTasks', JSON.stringify(next));
+          return next;
+        });
+      }, []);
+
+      /* per-task toggles + applause */
+      const addPoints = n => setPoints(p=>clamp0(p+n));
+      const subPoints = n => setPoints(p=>clamp0(p-n));
+
+      const toggleDaily = (id)=>{
+        setDailyTasks(prev=>{
+          const arr=[...prev]; const i=arr.findIndex(t=>t.id===id); if(i===-1) return prev;
+          const t=arr[i]; const was=t.completed;
+          if (!was && t.group==='phone'){
+            for (let k=0;k<arr.length;k++){
+              if (k!==i && arr[k].group==='phone' && arr[k].completed){ 
+                arr[k]={...arr[k],completed:false}; 
+                subPoints(arr[k].points); 
+                setStreak(s=>clamp0(s-1)); 
+              }
+            }
+          }
+          arr[i]={...t,completed:!t.completed};
+          if (!was){ 
+            addPoints(t.points); 
+            setStreak(s=>s+1);
+            sfxApplause();
+          } else { 
+            subPoints(t.points); 
+            setStreak(s=>clamp0(s-1)); 
+          }
+          return arr;
+        });
+      };
+
+      const toggleWeekly = (id)=>{
+        if (id===47){ 
+          const ng=prompt('Set your weekly goal:', weeklyGoal); 
+          if (ng && ng.trim()) setWeeklyGoal(ng.trim()); 
+        }
+        setWeeklyTasks(prev=>prev.map(t=>{
+          if (t.id!==id) return t;
+          const nowComplete = !t.completed;
+          if (nowComplete){ addPoints(t.points); sfxApplause(); } 
+          else { subPoints(t.points); }
+          return {...t, completed: nowComplete};
+        }));
+      };
+
+      const markDayFailed = (date) => {
+        setWeekProgress(prev => ({...prev, [date]: 'failed'}));
+      };
+
+      const resetToday = ()=>{ 
+        setDailyTasks(prev=>prev.map(t=>({...t,completed:false}))); 
+        setDailyCelebrated(false); 
+        const today = todayKey();
+        setWeekProgress(prev => {
+          const newProg = {...prev};
+          delete newProg[today];
+          return newProg;
+        });
+      };
+      
+      const resetAll = ()=>{
+        if (!confirm('Reset ALL progress?')) return;
+        setPoints(0); setLevel(1); setStreak(0); setDailyStreak(0);
+        setWeeklyGoal('Complete all daily tasks for 7 days straight!');
+        setWeeklyStreakBonusAwarded(false); setDailyCelebrated(false); setWeeklyCompleted(false);
+        setDailyTasks(DEFAULT_DAILY.map(t=>({...t}))); 
+        setWeeklyTasks(DEFAULT_WEEKLY.map(t=>({...t})));
+        setLastDailyKey(todayKey()); 
+        setLastMondayKey(mondayKey());
+        setWeekProgress({});
+      };
+      
+      const exportData = ()=>{
+        const blob=new Blob([JSON.stringify({
+          points,level,streak,dailyStreak,weeklyGoal,weeklyStreakBonusAwarded,
+          dailyCelebrated,weeklyCompleted,dailyTasks,weeklyTasks,lastDailyKey,lastMondayKey,
+          weekProgress,version:9
+        },null,2)],{type:'application/json'});
+        const url=URL.createObjectURL(blob); 
+        const a=document.createElement('a'); 
+        a.href=url; 
+        a.download=`chore-quest-${todayKey()}.json`; 
+        a.click(); 
+        URL.revokeObjectURL(url);
+      };
+      
+      const importData = async (file)=>{
+        if (!file) return; 
+        const text=await file.text(); 
+        const data=safeParse(text,null); 
+        if(!data){ alert('Invalid file'); return; }
+        setPoints(clamp0(safeInt(data.points,0))); 
+        setLevel(clamp0(safeInt(data.level,1))); 
+        setStreak(clamp0(safeInt(data.streak,0)));
+        setDailyStreak(clamp0(safeInt(data.dailyStreak,0))); 
+        setWeeklyGoal(data.weeklyGoal || 'Complete all daily tasks for 7 days straight!');
+        setWeeklyStreakBonusAwarded(!!data.weeklyStreakBonusAwarded); 
+        setDailyCelebrated(!!data.dailyCelebrated);
+        setWeeklyCompleted(!!data.weeklyCompleted);
+        setDailyTasks(Array.isArray(data.dailyTasks)?data.dailyTasks:DEFAULT_DAILY); 
+        setWeeklyTasks(Array.isArray(data.weeklyTasks)?data.weeklyTasks:DEFAULT_WEEKLY);
+        setLastDailyKey(data.lastDailyKey || todayKey()); 
+        setLastMondayKey(data.lastMondayKey || mondayKey()); 
+        setWeekProgress(data.weekProgress || {});
+        alert('Import complete!');
+      };
+
+      return (
+        <div className="min-h-screen p-4 pb-28">
+          {/* Level Up */}
+          {showLevelUp && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+              <div className="glass neon-border rounded-3xl p-8 text-center max-w-sm w-[92%]">
+                <Crown className="w-20 h-20 mx-auto mb-4 text-yellow-300" />
+                <h2 className="text-4xl game-title mb-1">LEVEL UP!</h2>
+                <p className="text-2xl lvl-badge">Level {level}</p>
+                <p className="mt-2 text-lg">{currentLevelInfo.icon} {currentLevelInfo.title}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Celebration */}
+          {showCelebration && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+              <div className="glass neon-border rounded-3xl p-8 text-center max-w-sm w-[92%]">
+                <div className="text-6xl mb-3 animate-bounce">
+                  {celebrationType==='daily' && '🎉🎉🎉'}
+                  {celebrationType==='weekly' && '🏆✨🏆'}
+                  {celebrationType==='weeklyBonus' && '💎💥💎'}
+                </div>
+                <h2 className="text-3xl game-title mb-2">
+                  {celebrationType==='daily' && 'DAILY COMPLETE!'}
+                  {celebrationType==='weekly' && 'WEEKLY COMPLETE!'}
+                  {celebrationType==='weeklyBonus' && 'SECRET BONUS!'}
+                </h2>
+                <p className="text-xl">
+                  {celebrationType==='daily' && `🔥 ${dailyStreak} Day Streak!`}
+                  {celebrationType==='weekly' && 'All weekly tasks done!'}
+                  {celebrationType==='weeklyBonus' && '+100 BONUS POINTS!'}
+                </p>
+                <div className="text-3xl mt-3 animate-spin-slow">💫</div>
+              </div>
+            </div>
+          )}
+
+          {/* Header */}
+          <div className="max-w-xl mx-auto">
+            {!isSecure && (
+              <div className="mb-3 text-xs bg-yellow-400/20 border border-yellow-400/50 text-yellow-100 px-3 py-2 rounded">
+                Tip: To install and use offline, open over HTTPS or http://localhost.
+              </div>
+            )}
+
+            <div className="flex items-center justify-between mb-3">
+              <button onClick={()=>setShowTools(s=>!s)} className="chip px-3 py-1 rounded-md glass neon-border text-sm focus-ring" aria-expanded={showTools} aria-controls="tools"> {showTools?'Hide':'Tools'} </button>
+
+              <h1 className="game-title text-4xl font-bold flex items-center gap-2">
+                <Zap className="text-cyan-300" /> BOE'S CHORE QUEST <Zap className="text-cyan-300" />
+              </h1>
+
+              <div className="flex items-center gap-2">
+                <button onClick={toggleMusic} className="chip px-3 py-1 rounded-md glass neon-border text-sm focus-ring">{musicEnabled ? 'Music: On' : 'Music: Off'}</button>
+                {canInstall && <button onClick={promptInstall} className="chip px-3 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-sm focus-ring">Install App</button>}
+              </div>
+            </div>
+
+            {/* Tools */}
+            {showTools && (
+              <div id="tools" className="glass neon-border rounded-xl p-3 mb-4">
+                <div className="flex flex-wrap gap-2">
+                  <button className="px-3 py-1 rounded bg-cyan-600 hover:bg-cyan-700 focus-ring" onClick={resetToday}>Reset Today</button>
+                  <button className="px-3 py-1 rounded bg-rose-600 hover:bg-rose-700 focus-ring" onClick={resetAll}>Reset All</button>
+                  <button className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-700 focus-ring" onClick={exportData}>Export</button>
+                  <label className="px-3 py-1 rounded bg-yellow-600 hover:bg-yellow-700 focus-ring cursor-pointer">
+                    Import
+                    <input type="file" accept="application/json" className="hidden" onChange={(e)=>importData(e.target.files?.[0])} />
+                  </label>
+                </div>
+                <p className="text-xs mt-2 opacity-80">
+                  You can also append <code>?music=&lt;URL_TO_MP3&gt;</code> to the page URL. Remote URLs must allow cross-origin access; if not, upload the MP3 to the same site or use the file uploader.
+                </p>
+              </div>
+            )}
+
+            {/* Weekly Calendar Progress */}
+            <div className="glass neon-border rounded-2xl p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Calendar className="w-5 h-5 text-cyan-300" />
+                <h3 className="text-lg font-bold">This Week's Progress</h3>
+              </div>
+              <div className="grid grid-cols-7 gap-2">
+                {weekDays.map((day) => {
+                  const status = weekProgress[day.date];
+                  const isToday = day.date === todayKey();
+                  return (
+                    <div key={day.date} className="text-center">
+                      <div className="text-xs opacity-70 mb-1">{day.day}</div>
+                      <div 
+                        className={`
+                          w-full aspect-square rounded-lg flex items-center justify-center text-sm font-bold
+                          ${status === 'completed' ? 'bg-emerald-500 text-white' : ''}
+                          ${status === 'failed' ? 'bg-rose-500 text-white' : ''}
+                          ${!status && isToday ? 'bg-cyan-500/30 border-2 border-cyan-400 text-white' : ''}
+                          ${!status && !isToday ? 'bg-white/10 text-white/50' : ''}
+                        `}
+                      >
+                        {day.dayNum}
+                      </div>
+                      {!status && !isToday && (
+                        <button 
+                          onClick={() => markDayFailed(day.date)}
+                          className="text-[10px] mt-1 text-rose-400 hover:text-rose-300"
+                        >
+                          Mark Failed
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-4 mt-3 text-xs opacity-70">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-emerald-500"></div>
+                  <span>Completed</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded bg-rose-500"></div>
+                  <span>Failed</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded border-2 border-cyan-400 bg-cyan-500/30"></div>
+                  <span>Today</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary */}
+            <div className="glass neon-border rounded-2xl p-4 mb-4">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-400 to-fuchsia-600 flex items-center justify-center text-2xl" style={{boxShadow:'0 0 20px rgba(0,255,234,.35)'}}>🎮</div>
+                <div className="flex-1"><div className="text-sm opacity-80">Today</div><div className="text-2xl font-extrabold">{dailyDoneCount}/{dailyTotal}</div></div>
+                <div className="w-px h-12 bg-white/15"></div>
+                <div className="flex-1"><div className="text-sm opacity-80">This Week</div><div className="text-2xl font-extrabold">{weeklyDoneCount}/{weeklyTotal}</div></div>
+              </div>
+            </div>
+
+            {/* Weekly goal */}
+            <div className="rounded-xl p-4 mb-4 glass neon-border">
+              <div className="flex items-center gap-2 mb-1"><TargetI className="w-5 h-5 text-yellow-300" /><h3 className="text-lg font-bold">This Week&apos;s Goal</h3></div>
+              <p className="font-semibold">{weeklyGoal}</p>
+              <div className="mt-2 flex items-center gap-2 text-sm"><Flame className="w-5 h-5 text-orange-300" /><span>Current Streak: <strong>{dailyStreak}</strong> days</span></div>
+            </div>
+
+            {/* Stats */}
+            <div className="rounded-2xl p-5 mb-6 glass neon-border">
+              <div className="grid grid-cols-3 gap-3 mb-5">
+                <div className="text-center">
+                  <div className="text-5xl mb-1">{currentLevelInfo.icon}</div>
+                  <div className="text-xl font-bold lvl-badge">Lvl {level}</div>
+                  <div className="text-xs opacity-70">{currentLevelInfo.title}</div>
+                </div>
+                <div className="text-center border-l border-white/15 pl-3">
+                  <Star className="w-7 h-7 mx-auto mb-1 text-yellow-300" />
+                  <div className="text-2xl font-extrabold">{points}</div>
+                  <div className="text-xs opacity-70">Total XP</div>
+                </div>
+                <div className="text-center border-l border-white/15 pl-3">
+                  <Flame className="w-7 h-7 mx-auto mb-1 text-orange-300" />
+                  <div className="text-2xl font-extrabold">{streak}</div>
+                  <div className="text-xs opacity-70">Streak</div>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-1 opacity-80"><span>Next Level</span><span>{points}/{pointsForNextLevel}</span></div>
+                <div className="w-full h-3 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-500 transition-all duration-500" style={{width:`${Math.min(progress,100)}%`}}></div></div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-sm mb-1 opacity-80"><span className="flex items-center gap-1"><Gift className="w-4 h-4" /> Monthly Prize Goal</span><span>{points}/{monthlyGoal}</span></div>
+                <div className="w-full h-3 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-gradient-to-r from-yellow-300 to-pink-500 transition-all duration-500" style={{width:`${Math.min(monthlyProgress,100)}%`}}></div></div>
+              </div>
+            </div>
+
+            {/* Daily */}
+            <div className="rounded-2xl p-5 mb-6 glass neon-border">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-2xl font-bold flex items-center gap-2"><TargetI className="text-cyan-300" /> Daily Quests</h2>
+                <button onClick={resetToday} className="text-sm bg-cyan-600 hover:bg-cyan-700 px-3 py-1 rounded-lg focus-ring">Reset</button>
+              </div>
+              <p className="text-sm opacity-80 mb-3 flex items-center gap-1"><Star className="w-4 h-4" /> ⭐ = Mandatory Daily Tasks</p>
+              <div className="space-y-3">
+                {dailyTasks.map(task=>(
+                  <button key={task.id} onClick={()=>toggleDaily(task.id)} className={`w-full text-left p-4 rounded-xl transition-all focus-ring ${task.completed?'bg-emerald-600/60 border border-emerald-400':task.mandatory?'bg-yellow-500/10 border border-yellow-400 hover:bg-yellow-500/20':'bg-white/5 border border-white/15 hover:bg-white/10'}`} aria-pressed={task.completed}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${task.completed?'bg-emerald-400 border-emerald-200':task.mandatory?'border-yellow-400':'border-white/30'}`}>{task.completed && '✓'}</div>
+                        <span className={`font-semibold ${task.completed?'line-through opacity-70':''}`}>{task.name}</span>
+                      </div>
+                      <div className={`flex items-center gap-1 px-3 py-1 rounded-full ${task.mandatory?'bg-yellow-400/90 text-black':'bg-yellow-500/80 text-black'}`}><Star className="w-4 h-4" /><span className="font-bold">{task.points}</span></div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Weekly */}
+            <div className="rounded-2xl p-5 glass neon-border">
+              <h2 className="text-2xl font-bold mb-4 flex items-center gap-2"><Trophy className="text-fuchsia-300" /> Weekly Challenges</h2>
+              <div className="space-y-3">
+                {weeklyTasks.map(task=>(
+                  <button key={task.id} onClick={()=>toggleWeekly(task.id)} className={`w-full text-left p-4 rounded-xl transition-all focus-ring ${task.completed?'bg-fuchsia-600/60 border border-fuchsia-400':'bg-white/5 border border-white/15 hover:bg-white/10'}`} aria-pressed={task.completed}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${task.completed?'bg-fuchsia-400 border-fuchsia-200':'border-white/30'}`}>{task.completed && '✓'}</div>
+                        <span className={`font-semibold ${task.completed?'line-through opacity-70':''}`}>{task.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1 bg-orange-500/85 text-black px-3 py-1 rounded-full"><Star className="w-4 h-4" /><span className="font-bold">{task.points}</span></div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
